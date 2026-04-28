@@ -2,6 +2,7 @@ import { app, BrowserWindow, ipcMain, dialog, shell } from 'electron';
 import * as path from 'path';
 import * as fs from 'fs';
 import * as https from 'https';
+import * as crypto from 'crypto';
 import { spawn, execSync } from 'child_process';
 import Store from 'electron-store';
 import * as yaml from 'js-yaml';
@@ -9,28 +10,79 @@ import * as yaml from 'js-yaml';
 const GITHUB_OWNER = 'bernardadhitya';
 const GITHUB_REPO = 'dbt-almanac';
 
-const store = new Store({
+interface StoreSchema {
+  projectPath: string;
+  airflowDagsPath: string;
+  edgeAnimations: boolean;
+  autoUpdate: boolean;
+  watchManifest: boolean;
+}
+
+const store = new Store<StoreSchema>({
   defaults: {
     projectPath: '',
     airflowDagsPath: '',
     edgeAnimations: true,
     autoUpdate: true,
+    watchManifest: true,
   },
 });
 
-type AppSettings = {
-  projectPath: string;
-  airflowDagsPath: string;
-  edgeAnimations: boolean;
-  autoUpdate: boolean;
-};
-
-const settingsStore = store as unknown as {
-  get<K extends keyof AppSettings>(key: K): AppSettings[K];
-  set<K extends keyof AppSettings>(key: K, value: AppSettings[K]): void;
-};
 
 let mainWindow: BrowserWindow | null = null;
+
+// ────────────────────────────────────────────────────
+// Manifest file watcher
+// ────────────────────────────────────────────────────
+let manifestWatcher: fs.FSWatcher | null = null;
+let manifestHashCache: string | null = null;
+let manifestWatchDebounce: ReturnType<typeof setTimeout> | null = null;
+
+function hashFile(filePath: string): string | null {
+  try {
+    const buf = fs.readFileSync(filePath);
+    return crypto.createHash('md5').update(buf).digest('hex');
+  } catch {
+    return null;
+  }
+}
+
+function startManifestWatcher(projectPath: string) {
+  stopManifestWatcher();
+  const manifestPath = path.join(projectPath, 'target', 'manifest.json');
+  // Seed hash from the file that is currently loaded so the first real
+  // change (after dbt run/compile) is what triggers the notification.
+  manifestHashCache = hashFile(manifestPath);
+
+  try {
+    const watchDir = path.join(projectPath, 'target');
+    if (!fs.existsSync(watchDir)) return;
+    // Watch the directory, not the file — dbt writes atomically via rename
+    // so a plain file watcher would miss the event on many platforms.
+    manifestWatcher = fs.watch(watchDir, { persistent: false }, (_evt, filename) => {
+      if (filename !== 'manifest.json') return;
+      if (manifestWatchDebounce) clearTimeout(manifestWatchDebounce);
+      manifestWatchDebounce = setTimeout(() => {
+        const newHash = hashFile(manifestPath);
+        if (newHash && newHash !== manifestHashCache) {
+          manifestHashCache = newHash;
+          if (mainWindow && !mainWindow.isDestroyed()) {
+            mainWindow.webContents.send('manifest-changed');
+          }
+        }
+      }, 500);
+    });
+    manifestWatcher.on('error', () => stopManifestWatcher());
+  } catch {
+    // Non-critical — watcher is best-effort
+  }
+}
+
+function stopManifestWatcher() {
+  if (manifestWatchDebounce) { clearTimeout(manifestWatchDebounce); manifestWatchDebounce = null; }
+  if (manifestWatcher) { try { manifestWatcher.close(); } catch { /* ignore */ } manifestWatcher = null; }
+  manifestHashCache = null;
+}
 
 // Cached update info so download/install can reference it
 let pendingUpdate: { version: string; releaseNotes: string; downloadUrl: string; htmlUrl: string } | null = null;
@@ -369,18 +421,40 @@ ipcMain.handle('scan-airflow-dags', async (_event, dagsPath: string, projectPath
 
 ipcMain.handle('get-settings', () => {
   return {
-    projectPath: settingsStore.get('projectPath'),
-    airflowDagsPath: settingsStore.get('airflowDagsPath'),
-    edgeAnimations: settingsStore.get('edgeAnimations'),
-    autoUpdate: settingsStore.get('autoUpdate'),
+    projectPath: store.get('projectPath'),
+    airflowDagsPath: store.get('airflowDagsPath'),
+    edgeAnimations: store.get('edgeAnimations'),
+    autoUpdate: store.get('autoUpdate'),
+    watchManifest: store.get('watchManifest'),
   };
 });
 
-ipcMain.handle('set-settings', (_event, settings: { projectPath?: string; airflowDagsPath?: string; edgeAnimations?: boolean; autoUpdate?: boolean }) => {
-  if (settings.projectPath !== undefined) settingsStore.set('projectPath', settings.projectPath);
-  if (settings.airflowDagsPath !== undefined) settingsStore.set('airflowDagsPath', settings.airflowDagsPath);
-  if (settings.edgeAnimations !== undefined) settingsStore.set('edgeAnimations', settings.edgeAnimations);
-  if (settings.autoUpdate !== undefined) settingsStore.set('autoUpdate', settings.autoUpdate);
+ipcMain.handle('set-settings', (_event, settings: { projectPath?: string; airflowDagsPath?: string; edgeAnimations?: boolean; autoUpdate?: boolean; watchManifest?: boolean }) => {
+  if (settings.projectPath !== undefined) store.set('projectPath', settings.projectPath);
+  if (settings.airflowDagsPath !== undefined) store.set('airflowDagsPath', settings.airflowDagsPath);
+  if (settings.edgeAnimations !== undefined) store.set('edgeAnimations', settings.edgeAnimations);
+  if (settings.autoUpdate !== undefined) store.set('autoUpdate', settings.autoUpdate);
+  if (settings.watchManifest !== undefined) {
+    store.set('watchManifest', settings.watchManifest);
+    const projectPath = store.get('projectPath') as string;
+    if (settings.watchManifest && projectPath) {
+      startManifestWatcher(projectPath);
+    } else {
+      stopManifestWatcher();
+    }
+  }
+  return true;
+});
+
+// Start watching after a successful manifest load (called from renderer)
+ipcMain.handle('watch-manifest', (_event, projectPath: string) => {
+  const enabled = store.get('watchManifest') as boolean;
+  if (enabled && projectPath) startManifestWatcher(projectPath);
+  return true;
+});
+
+ipcMain.handle('unwatch-manifest', () => {
+  stopManifestWatcher();
   return true;
 });
 

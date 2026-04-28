@@ -99,7 +99,7 @@ const STEP_LABELS: Record<string, string> = {
 const STEP_ORDER = ['reading', 'parsing', 'extracting', 'mapping', 'finalizing', 'done'];
 
 export default function App() {
-  const [settings, setSettings] = useState<Settings>({ projectPath: '', airflowDagsPath: '', edgeAnimations: true, autoUpdate: true });
+  const [settings, setSettings] = useState<Settings>({ projectPath: '', airflowDagsPath: '', edgeAnimations: true, autoUpdate: true, watchManifest: true });
   const [manifest, setManifest] = useState<ParsedManifest | null>(null);
   const [filters, setFilters] = useState<FilterState>({
     selectedModel: null,
@@ -120,6 +120,7 @@ export default function App() {
   const [activeResultNodeId, setActiveResultNodeId] = useState<string | null>(null);
   const [detailNodeId, setDetailNodeId] = useState<string | null>(null);
   const [lastClickedNodeId, setLastClickedNodeId] = useState<string | null>(null);
+  const [manifestOutdated, setManifestOutdated] = useState(false);
 
   // Hidden nodes state: root node IDs that the user has hidden (along with their downstream descendants)
   const [hiddenRootIds, setHiddenRootIds] = useState<Set<string>>(new Set());
@@ -152,6 +153,15 @@ export default function App() {
     if (!isElectron) return;
     const cleanup = window.electronAPI.onAirflowProgress((data) => {
       setAirflowProgress(data);
+    });
+    return cleanup;
+  }, []);
+
+  // Listen for manifest-changed push events from the main-process file watcher
+  useEffect(() => {
+    if (!isElectron) return;
+    const cleanup = window.electronAPI.onManifestChanged(() => {
+      setManifestOutdated(true);
     });
     return cleanup;
   }, []);
@@ -300,6 +310,7 @@ export default function App() {
     setLoading(true);
     setError(null);
     setProgress(null);
+    setManifestOutdated(false); // clear stale indicator before re-reading
     try {
       if (isElectron) {
         const result = await window.electronAPI.readManifest(projectPath);
@@ -308,6 +319,8 @@ export default function App() {
           // Small delay so the progress UI renders before hydration blocks the main thread
           await new Promise((r) => setTimeout(r, 50));
           setManifest(hydrateManifest(result.data));
+          // Seed the watcher with the hash of the freshly-loaded file
+          window.electronAPI.watchManifest(projectPath);
           // After manifest is loaded, scan Airflow DAGs if path is set
           const dagsPath = airflowDagsPath ?? settings.airflowDagsPath;
           if (dagsPath) {
@@ -488,6 +501,9 @@ export default function App() {
         nodeCount={nodes.length}
         edgeCount={edges.length}
         onOpenSettings={() => setSettingsOpen(true)}
+        onReloadManifest={settings.projectPath ? () => loadManifest(settings.projectPath) : undefined}
+        isLoading={loading}
+        manifestOutdated={manifestOutdated}
         hasAirflowDags={!!airflowDagMap}
         showDagGroups={showDagGroups}
         onShowDagGroupsChange={setShowDagGroups}
