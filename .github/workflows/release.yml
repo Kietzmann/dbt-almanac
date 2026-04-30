@@ -11,9 +11,6 @@ on:
         description: "Release version (e.g., 1.2.0)"
         required: true
         type: string
-  push:
-    branches:
-      - feat/windows-linux-builds
 
 permissions:
   contents: write

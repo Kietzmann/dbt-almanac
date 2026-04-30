@@ -6,7 +6,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   scanAirflowDags: (dagsPath: string, projectPath: string) =>
     ipcRenderer.invoke('scan-airflow-dags', dagsPath, projectPath),
   getSettings: () => ipcRenderer.invoke('get-settings'),
-  setSettings: (settings: { projectPath?: string; airflowDagsPath?: string; edgeAnimations?: boolean; autoUpdate?: boolean }) =>
+  setSettings: (settings: { projectPath?: string; airflowDagsPath?: string; edgeAnimations?: boolean; autoUpdate?: boolean; watchManifest?: boolean }) =>
     ipcRenderer.invoke('set-settings', settings),
   onManifestProgress: (callback: (data: { step: string; detail: string }) => void) => {
     const handler = (_event: any, data: { step: string; detail: string }) => callback(data);
@@ -17,6 +17,13 @@ contextBridge.exposeInMainWorld('electronAPI', {
     const handler = (_event: any, data: { step: string; detail: string }) => callback(data);
     ipcRenderer.on('airflow-progress', handler);
     return () => ipcRenderer.removeListener('airflow-progress', handler);
+  },
+  watchManifest: (projectPath: string) => ipcRenderer.invoke('watch-manifest', projectPath),
+  unwatchManifest: () => ipcRenderer.invoke('unwatch-manifest'),
+  onManifestChanged: (callback: () => void) => {
+    const handler = () => callback();
+    ipcRenderer.on('manifest-changed', handler);
+    return () => ipcRenderer.removeListener('manifest-changed', handler);
   },
   // Update-related APIs
   getAppVersion: () => ipcRenderer.invoke('get-app-version'),

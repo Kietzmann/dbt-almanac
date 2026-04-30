@@ -69,6 +69,7 @@ export interface Settings {
   airflowDagsPath: string;
   edgeAnimations: boolean;
   autoUpdate: boolean;
+  watchManifest: boolean;
 }
 
 export interface UpdateInfo {
@@ -123,6 +124,9 @@ declare global {
       setSettings: (settings: Partial<Settings>) => Promise<boolean>;
       onManifestProgress: (callback: (data: LoadingProgress) => void) => () => void;
       onAirflowProgress: (callback: (data: LoadingProgress) => void) => () => void;
+      watchManifest: (projectPath: string) => Promise<boolean>;
+      unwatchManifest: () => Promise<boolean>;
+      onManifestChanged: (callback: () => void) => () => void;
       getAppVersion: () => Promise<string>;
       checkForUpdate: () => Promise<{ available: boolean; info?: UpdateInfo; error?: string }>;
       downloadUpdate: () => Promise<{ success: boolean; error?: string }>;

@@ -25,6 +25,9 @@ interface SidebarProps {
   nodeCount: number;
   edgeCount: number;
   onOpenSettings: () => void;
+  onReloadManifest?: () => void;
+  isLoading?: boolean;
+  manifestOutdated?: boolean;
   hasAirflowDags: boolean;
   showDagGroups: boolean;
   onShowDagGroupsChange: (show: boolean) => void;
@@ -44,6 +47,9 @@ export function Sidebar({
   nodeCount,
   edgeCount,
   onOpenSettings,
+  onReloadManifest,
+  isLoading = false,
+  manifestOutdated = false,
   hasAirflowDags,
   showDagGroups,
   onShowDagGroupsChange,
@@ -95,7 +101,33 @@ export function Sidebar({
       style={{ width }}
     >
       {/* Header */}
-      <div className="px-4 py-4 border-b border-gray-200 dark:border-gray-700 flex items-center justify-end app-drag">
+      <div className="px-4 py-4 border-b border-gray-200 dark:border-gray-700 flex items-center justify-end gap-1 app-drag">
+        {/* Reload manifest button — only shown when a project is loaded */}
+        {onReloadManifest && (
+          <button
+            onClick={onReloadManifest}
+            disabled={isLoading}
+            className="relative p-1.5 rounded-md text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors app-no-drag disabled:opacity-40 disabled:cursor-not-allowed"
+            title={manifestOutdated ? 'Manifest changed on disk — click to reload' : 'Reload manifest'}
+          >
+            <svg
+              className={`w-5 h-5 ${isLoading ? 'animate-spin' : ''} ${
+                manifestOutdated && !isLoading ? 'text-orange-500 dark:text-orange-400' : ''
+              }`}
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+            </svg>
+            {manifestOutdated && !isLoading && (
+              <span className="absolute top-1 right-1 w-2 h-2 rounded-full bg-orange-500">
+                <span className="absolute inset-0 rounded-full bg-orange-400 animate-ping opacity-75" />
+              </span>
+            )}
+          </button>
+        )}
         <button
           onClick={onOpenSettings}
           className="p-1.5 rounded-md text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors app-no-drag"

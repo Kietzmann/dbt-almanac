@@ -356,8 +356,37 @@ export function SettingsModal({
                     </button>
                   </div>
                 </section>
+
+                {/* Watch for manifest changes */}
+                <section>
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                        Watch for manifest changes
+                      </label>
+                      <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                        Monitor <code className="text-[11px] px-1 py-0.5 rounded bg-gray-100 dark:bg-gray-700">target/manifest.json</code> for
+                        changes after <code className="text-[11px] px-1 py-0.5 rounded bg-gray-100 dark:bg-gray-700">dbt run</code> or{' '}
+                        <code className="text-[11px] px-1 py-0.5 rounded bg-gray-100 dark:bg-gray-700">dbt compile</code> and show a reload prompt.
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => onChangeSettings({ watchManifest: !settings.watchManifest })}
+                      className={`relative w-11 h-6 rounded-full transition-colors shrink-0 ml-4 ${
+                        settings.watchManifest ? 'bg-blue-600' : 'bg-gray-300 dark:bg-gray-600'
+                      }`}
+                    >
+                      <span
+                        className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${
+                          settings.watchManifest ? 'translate-x-5' : 'translate-x-0'
+                        }`}
+                      />
+                    </button>
+                  </div>
+                </section>
               </div>
             )}
+
 
             {/* ════════════════════════════════════════════ */}
             {/* TEST DEFINITIONS TAB                        */}
